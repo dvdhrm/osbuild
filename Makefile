@@ -17,6 +17,7 @@
 BUILDDIR ?= .
 SRCDIR ?= .
 
+DOCKER ?= docker
 PYLINT ?= pylint
 PYTHON3 ?= python3
 RST2MAN ?= rst2man
@@ -44,9 +45,14 @@ SHELL = /bin/bash
 #         the source is not a git checkout. Hence, this variable is not
 #         pre-fetched but evaluated at time of use.
 #
+#     RANDOM:
+#         This evaluates to a different random number each time it is used. It
+#         uses the underlying `$RANDOM` variable of the shell.
+#
 
-VERSION := $(shell (cd "$(SRCDIR)" && python3 setup.py --version))
+VERSION = $(shell (cd "$(SRCDIR)" && python3 setup.py --version))
 COMMIT = $(shell (cd "$(SRCDIR)" && git rev-parse HEAD))
+RANDOM = $(shell echo $$RANDOM)
 
 #
 # Generic Targets
@@ -67,6 +73,11 @@ COMMIT = $(shell (cd "$(SRCDIR)" && git rev-parse HEAD))
 #         a trailing slash after the directory to not mix it up with regular
 #         files. Lastly, you mostly want this as order-only dependency, since
 #         timestamps on directories do not affect their content.
+#
+#     .FORCE
+#         This target has no recipies nor any dependencies. Hence, GNU-make
+#         considers it to change on every invocation. This allows generated
+#         targets to depend on this, and thus effectively become `.PHONY`.
 #
 
 .PHONY: help
@@ -89,6 +100,8 @@ $(BUILDDIR)/:
 
 $(BUILDDIR)/%/:
 	mkdir -p "$@"
+
+.FORCE:
 
 #
 # Documentation
@@ -147,6 +160,62 @@ test-all: test-pylint
 			-v
 
 #
+# CI Management
+#
+
+CI_PUSH ?= false
+CI_REF ?= refs/invalid/none
+CI_REGISTRY ?= docker.io
+CI_REPOSITORY ?= osbuild/osbuild
+CI_VOLATILE ?= true
+
+ifeq ($(patsubst refs/tags/ci/%,refs/tags/ci/XYZ,$(CI_REF)),refs/tags/ci/XYZ)
+CI_TAG := $(patsubst refs/tags/%,%,$(CI_REF))
+CI_TAG_DEPLOY := latest
+else
+CI_TAG := volatile-$(RANDOM)
+CI_TAG_DEPLOY := latest
+endif
+
+CI_CONTAINERS_DIR = $(wildcard $(SRCDIR)/.github/containers/*)
+CI_CONTAINERS_LABEL = $(patsubst $(SRCDIR)/.github/containers/%,%,$(CI_CONTAINERS_DIR))
+
+CI_CONTAINERS_BUILD = $(patsubst %,ci-build/$(CI_REGISTRY)/$(CI_REPOSITORY)/%,$(CI_CONTAINERS_LABEL))
+CI_CONTAINERS_CREATE = $(patsubst %,ci-create/$(CI_REGISTRY)/$(CI_REPOSITORY)/%,$(CI_CONTAINERS_LABEL))
+CI_CONTAINERS_DEPLOY = $(patsubst %,ci-deploy/$(CI_REGISTRY)/$(CI_REPOSITORY)/%,$(CI_CONTAINERS_LABEL))
+
+$(CI_CONTAINERS_BUILD): ci-build/$(CI_REGISTRY)/$(CI_REPOSITORY)/%: .FORCE
+	$(DOCKER) build \
+		--quiet \
+		--tag "$(patsubst ci-build/%,%,$@):$(CI_TAG)" \
+		"$(SRCDIR)/.github/containers/$*"
+
+$(CI_CONTAINERS_CREATE): ci-create/$(CI_REGISTRY)/$(CI_REPOSITORY)/%: ci-build/$(CI_REGISTRY)/$(CI_REPOSITORY)/%
+	[[ "$(CI_PUSH)" != "true" ]] || \
+		$(DOCKER) push "$(patsubst ci-create/%,%,$@):$(CI_TAG)"
+	[[ "$(CI_VOLATILE)" != "true" ]] || \
+		$(DOCKER) image rm "$(patsubst ci-create/%,%,$@):$(CI_TAG)"
+
+$(CI_CONTAINERS_DEPLOY): ci-deploy/$(CI_REGISTRY)/$(CI_REPOSITORY)/%: ci-build/$(CI_REGISTRY)/$(CI_REPOSITORY)/%
+	$(DOCKER) tag \
+		"$(patsubst ci-deploy/%,%,$@):$(CI_TAG)" \
+		"$(patsubst ci-deploy/%,%,$@):$(CI_TAG_DEPLOY)"
+	[[ "$(CI_PUSH)" != "true" ]] || \
+		$(DOCKER) push \
+			"$(patsubst ci-deploy/%,%,$@):$(CI_TAG_DEPLOY)"
+	[[ "$(CI_VOLATILE)" != "true" ]] || \
+		( \
+			$(DOCKER) image rm "$(patsubst ci-deploy/%,%,$@):$(CI_TAG_DEPLOY)" ; \
+			$(DOCKER) image rm "$(patsubst ci-deploy/%,%,$@):$(CI_TAG)" \
+		)
+
+.PHONY: ci-create
+ci-create: $(CI_CONTAINERS_CREATE)
+
+.PHONY: ci-deploy
+ci-deploy: $(CI_CONTAINERS_DEPLOY)
+
+#
 # Building packages
 #
 # The following rules build osbuild packages from the current HEAD commit,
@@ -185,7 +254,7 @@ rpm: $(RPM_SPECFILE) $(RPM_TARBALL)
 # Releasing
 #
 
-NEXT_VERSION := $(shell expr "$(VERSION)" + 1)
+NEXT_VERSION = $(shell expr "$(VERSION)" + 1)
 
 .PHONY: bump-version
 bump-version:
