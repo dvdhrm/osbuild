@@ -1,0 +1,80 @@
+#
+# CI Management
+#
+# This workflow manages the continuous integration infrastructure. It does not
+# execute the CI, but instead builds the required containers, prepares the
+# infrastructure, and imports required services.
+#
+name: "CI Management"
+
+on:
+  pull_request:
+    branches:
+    - "ci/*"
+  push:
+    branches:
+    - "ci/*"
+    tags:
+    - "ci/*"
+
+jobs:
+  #
+  # Create Containers
+  #
+  # This job builds and optionally pushes containers from `.github/containers/`
+  # to github-packages. Depending on the source ref, a different operation is
+  # performed:
+  #
+  #   * `refs/tags/ci/rcX`: If a tag like `ci/rc12` is pushed, all containers
+  #     are built and pushed to github-packages with that tag-name.
+  #
+  #   * In all other cases, the containers are built but immediately discarded.
+  #
+  create_containers:
+    name: "Create Containers"
+    runs-on: ubuntu-latest
+    steps:
+    - name: "Clone Repository"
+      uses: actions/checkout@v2
+    - name: "Authenticate to GitHub Packages"
+      if: ${{ startsWith(github.ref, 'refs/tags/ci/rc') }}
+      run: |
+        echo "${{ github.token }}" \
+        | docker login \
+            docker.pkg.github.com \
+            --password-stdin \
+            -u "${{ github.actor }}"
+    - name: "Build and Push Containers"
+      run: |
+        make \
+          "CI_PUSH=${{ startsWith(github.ref, 'refs/tags/ci/rc') }}" \
+          "CI_REF=${{ github.ref }}" \
+          "CI_REGISTRY=docker.pkg.github.com" \
+          "CI_REPOSITORY=${{ github.repository }}" \
+          ci-create
+
+  #
+  # Test Custom Github-Actions
+  #
+  # A simple job that runs the github-actions integration provided by the
+  # scripts in ./.github/actions/.
+  #
+  test_actions:
+    name: "Test Custom Github-Actions"
+    runs-on: ubuntu-latest
+    steps:
+    - name: "Clone Repository"
+      uses: actions/checkout@v2
+    - name: "Authenticate to GitHub Packages"
+      run: |
+        echo "${{ github.token }}" \
+        | docker login \
+            docker.pkg.github.com \
+            --password-stdin \
+            -u "${{ github.actor }}"
+    - name: "Run Local CI Test Action"
+      uses: ./.github/actions/ci
+      with:
+        run: |
+          echo Foo
+          echo Bar

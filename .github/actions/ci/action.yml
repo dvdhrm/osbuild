@@ -1,0 +1,22 @@
+#
+# actions/ci - Github Actions for osbuild CI
+#
+# This is a Github-Actions wrapper to run a command in the `osbuild/ci`
+# container fully privileged and prepared to execute `osbuild` in a contained
+# environment.
+#
+
+name: 'OSBuild CI with Github Actions'
+description: 'Github Actions integration for running commands in the osbuild ci'
+inputs:
+  image:
+    description: 'CI image to use'
+    required: true
+    default: 'docker.pkg.github.com/osbuild/osbuild/ci:v1'
+  run:
+    description: 'Commands to execute'
+    required: true
+    default: 'echo "Nothing to do."'
+runs:
+  using: 'node12'
+  main: 'index.js'

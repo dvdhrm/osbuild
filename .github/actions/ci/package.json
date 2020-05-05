@@ -1,0 +1,10 @@
+{
+  "name": "ci-osbuild",
+  "version": "1.0.0",
+  "description": "Execute commands in the osbuild ci",
+  "main": "index.js",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@actions/core": "^1.2.3"
+  }
+}
