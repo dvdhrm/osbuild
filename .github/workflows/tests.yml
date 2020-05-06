@@ -18,12 +18,13 @@ jobs:
   module:
     name: "Module Unittests"
     runs-on: ubuntu-latest
-    container: docker.io/library/python:3.7
     steps:
       - name: Clone repository
         uses: actions/checkout@v2
       - name: Run Module Unittests
-        run: make test-module
+        uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+        with:
+          run: make test-module
 
   documentation:
     name: "📚 Documentation"

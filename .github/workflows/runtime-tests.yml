@@ -17,24 +17,21 @@ jobs:
     steps:
     - name: "Clone Repository"
       uses: actions/checkout@v2
-    - name: "Install Dependencies"
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install \
-          nbd-client \
-          qemu-utils \
-          rpm \
-          systemd-container \
-          tar \
-          yum
-    - name: "Set up Python"
-      uses: actions/setup-python@v1
-      with:
-        python-version: 3.7
-    - name: Install Python Packages
-      run: pip install jsonschema
     - name: "Run Pipeline Tests"
-      run: sudo env "PATH=$PATH" make test-runtime
+      uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+      with:
+        run: make test-runtime
+
+  boot_tests:
+    name: "Boot Tests"
+    runs-on: ubuntu-latest
+    steps:
+    - name: "Clone Repository"
+      uses: actions/checkout@v2
+    - name: "Run Pipeline Tests"
+      uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+      with:
+        run: python3 -m unittest -v test.test_boot
 
   noop_pipeline_tests:
     name: "Noop-Pipeline Tests"
@@ -42,22 +39,13 @@ jobs:
     steps:
     - name: "Clone Repository"
       uses: actions/checkout@v2
-    - name: "Install Dependencies"
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install \
-          systemd-container
-    - name: "Set up Python"
-      uses: actions/setup-python@v1
-      with:
-        python-version: 3.7
-    - name: Install Python Packages
-      run: pip install jsonschema
     - name: "Run Noop-Pipeline Tests"
-      run: |
-        for i in {0..2} ; do
-          sudo env "PATH=$PATH" python3 -m osbuild --libdir . samples/noop.json
-        done
+      uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+      with:
+        run: |
+          for i in {0..2} ; do
+            python3 -m osbuild --libdir . samples/noop.json
+          done
 
   assembler_tests:
     name: "Assembler Tests"
@@ -65,24 +53,10 @@ jobs:
     steps:
     - name: "Clone Repository"
       uses: actions/checkout@v2
-    - name: "Install Dependencies"
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install \
-          nbd-client \
-          qemu-utils \
-          rpm \
-          systemd-container \
-          tar \
-          yum
-    - name: "Set up Python"
-      uses: actions/setup-python@v1
-      with:
-        python-version: 3.7
-    - name: Install Python Packages
-      run: pip install jsonschema
     - name: "Run Assembler Tests"
-      run: sudo env "PATH=$PATH" python3 -m unittest -v test.test_assemblers
+      uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+      with:
+        run: python3 -m unittest -v test.test_assemblers
 
   stage_tests:
     name: "Stage Tests"
@@ -90,18 +64,7 @@ jobs:
     steps:
     - name: "Clone Repository"
       uses: actions/checkout@v2
-    - name: "Install Dependencies"
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install \
-          systemd-container \
-          tar \
-          yum
-    - name: "Set up Python"
-      uses: actions/setup-python@v1
-      with:
-        python-version: 3.7
-    - name: Install Python Packages
-      run: pip install jsonschema
     - name: "Run Stage Tests"
-      run: sudo env "PATH=$PATH" python3 -m unittest -v test.test_stages
+      uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+      with:
+        run: python3 -m unittest -v test.test_stages
