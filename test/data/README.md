@@ -24,6 +24,11 @@ do not allow comments, this file shortly describes their purpose.
    The `rhel` prefix is used for Red Hat Enterprise Linux images. Since they are
    not available publicly, the test-suite usually skips them.
 
+   The `fedmir` manifests are used by the CI with a local `FedMir` fedora mirror
+   in a container to populate caches with packages before running the tests. To
+   build these manifests, you usually need a `FedMir` container running on
+   localhost on port 8071.
+
    Manifests prefixed with `mpp-*` are fed through the ManifestPreProcessors and
    then stored in the same directory with the `mpp-*` prefix dropped. The
    generated files are committed to the repository. Nevertheless, if you need to
