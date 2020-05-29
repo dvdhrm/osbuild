@@ -11,10 +11,7 @@ from .. import test
 
 
 @unittest.skipUnless(test.TestBase.have_test_data(), "no test-data access")
-class TestBoot(test.TestBase):
-    def setUp(self):
-        self.osbuild = test.OSBuild(self)
-
+class TestBoot(test.TestRuntime):
     def test_boot(self):
         #
         # Build an image and test-boot it.

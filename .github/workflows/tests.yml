@@ -6,6 +6,7 @@ jobs:
   test_suite:
     name: "Test Suite"
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
@@ -17,11 +18,21 @@ jobs:
         - "test.run.test_sources"
         - "test.run.test_stages"
         - "test.src"
+
+    services:
+      fedmir:
+        image: "docker.io/osbuilders/ghci-osbuild-fedmir:v1"
+        ports: ["8071:80"]
+
     steps:
     - name: "Clone Repository"
       uses: actions/checkout@v2
+    - name: "Wait for FedMir"
+      uses: osbuild/containers/src/actions/netwait@v1
+      with:
+        port: "8071"
     - name: "Run Tests"
-      uses: osbuild/containers/ghci/actions/ghci-osbuild@ghci/v1
+      uses: osbuild/containers/src/actions/ghci-osbuild@v1
       with:
         run: |
           python3 -m unittest discover \

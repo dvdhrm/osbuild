@@ -9,7 +9,7 @@ from .. import test
 
 class TestNoop(unittest.TestCase):
     def setUp(self):
-        self.osbuild = test.OSBuild(self)
+        self.osbuild = test.OSBuild()
 
     def test_noop(self):
         #

@@ -6,6 +6,7 @@ import contextlib
 import errno
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -206,44 +207,98 @@ class TestBase(unittest.TestCase):
         output = subprocess.check_output([os.path.join(checkout, "tools/tree-diff"), path1, path2])
         return json.loads(output)
 
+    @staticmethod
+    def have_fedmir() -> bool:
+        """Check FedMir Availability
+
+        We use a custom Fedora-Mirror ("FedMir") on our CI, which allows us to
+        pre-fetch RPMs and thus avoid network latencies. This function checks
+        for availability of that mirror.
+
+        We use the port `8071` for FedMir. If that port can be connected to
+        locally, we assume it runs FedMir.
+        """
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # Use a 100ms timeout, more than enough for local connections.
+            s.settimeout(0.1)
+            try:
+                r = s.connect_ex(('127.0.0.1', 8071))
+                return r == 0
+            except OSError:
+                return False
+
+
+class TestRuntime(TestBase):
+    """Runtime Class for Tests
+
+    This class extends `TestBase` with a managed osbuild store and executor.
+    The store is prepopulated with common objects, so tests will automatically
+    use the cached values.
+    """
+
+    _store = None
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._store = tempfile.TemporaryDirectory(dir="/var/tmp")
+        cls.osbuild = OSBuild(external_store=cls._store.name)
+        cls.populate_store(cls.osbuild)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.osbuild = None
+        cls._store.cleanup()
+        super().tearDownClass()
+
+    @classmethod
+    def populate_store(cls, osb):
+        if not cls.have_fedmir() or not cls.have_test_data():
+            return
+
+        # With FedMir available, we can build `fedora-fedmir.json`, a simply
+        # pipeline that pulls in all RPMs we use in other manifests. This will
+        # populate the sources-cache and make sure following builds can reuse
+        # the sources.
+        # For now, this also builds a throwaway image with all these RPMs
+        # instaled. We might want to improve this to only download the sources,
+        # but not build any image.
+        with osb:
+            osb.compile_file(os.path.join(cls.locate_test_data(),
+                                          "manifests/fedora-fedmir.json"))
+
 
 class OSBuild(contextlib.AbstractContextManager):
     """OSBuild Executor
 
     This class represents a context to execute osbuild. It provides a context
-    manager, which while entered maintains a cache and output directory. This
+    manager, which while entered maintains a store and output directory. This
     allows running pipelines against a common setup and tear everything down
     when exiting.
     """
 
-    _unittest = None
-    _cache_from = None
+    _external_store = None
 
     _exitstack = None
-    _cachedir = None
+    _storedir = None
     _outputdir = None
 
-    def __init__(self, unit_test, cache_from=None):
-        self._unittest = unit_test
-        self._cache_from = cache_from
+    def __init__(self, external_store=None):
+        self._external_store = external_store
 
     def __enter__(self):
         self._exitstack = contextlib.ExitStack()
         with self._exitstack:
-            # Create a temporary cache-directory. Optionally initialize it from
-            # the cache specified by the caller.
-            # Support for `cache_from` should be dropped once our cache allows
-            # parallel writes. For now, this allows initializing test-runs with
-            # a prepopulated cache for faster testing.
-            cache = tempfile.TemporaryDirectory(dir="/var/tmp")
-            self._cachedir = self._exitstack.enter_context(cache)
-            if self._cache_from is not None:
-                subprocess.run(["cp", "--reflink=auto", "-a",
-                                os.path.join(self._cache_from, "."),
-                                self._cachedir],
-                               check=True)
+            # If the caller specified an external store, use it. Otherwise,
+            # we create an empty, temporary store.
+            if self._external_store:
+                self._storedir = self._external_store
+            else:
+                store = tempfile.TemporaryDirectory(dir="/var/tmp")
+                self._storedir = self._exitstack.enter_context(store)
 
-            # Create a temporary output-directors for assembled artifacts.
+            # Create a temporary output-directory for assembled artifacts.
             output = tempfile.TemporaryDirectory(dir="/var/tmp")
             self._outputdir = self._exitstack.enter_context(output)
 
@@ -258,7 +313,7 @@ class OSBuild(contextlib.AbstractContextManager):
             pass
 
         self._outputdir = None
-        self._cachedir = None
+        self._storedir = None
         self._exitstack = None
 
     @staticmethod
@@ -293,7 +348,7 @@ class OSBuild(contextlib.AbstractContextManager):
         cmd_args += ["--json"]
         cmd_args += ["--libdir", "."]
         cmd_args += ["--output-directory", self._outputdir]
-        cmd_args += ["--store", self._cachedir]
+        cmd_args += ["--store", self._storedir]
 
         for c in (checkpoints or []):
             cmd_args += ["--checkpoint", c]
@@ -318,7 +373,7 @@ class OSBuild(contextlib.AbstractContextManager):
         # If execution failed, print results to `STDOUT`.
         if p.returncode != 0:
             self._print_result(p.returncode, data_stdout, data_stderr)
-            self._unittest.assertEqual(p.returncode, 0)
+            assert p.returncode == 0
 
     def compile_file(self, file_stdin, checkpoints=None):
         """Compile an Artifact
@@ -352,14 +407,14 @@ class OSBuild(contextlib.AbstractContextManager):
     def map_object(self, obj):
         """Temporarily Map an Intermediate Object
 
-        This takes a cache-reference as input, looks it up in the current cache
+        This takes a store-reference as input, looks it up in the current store
         and provides the file-path to this object back to the caller.
         """
 
-        path = os.path.join(self._cachedir, "refs", obj)
+        path = os.path.join(self._storedir, "refs", obj)
         assert os.access(path, os.R_OK)
 
-        # Yield the path to the cache-entry to the caller. This is implemented
+        # Yield the path to the store-entry to the caller. This is implemented
         # as a context-manager so the caller does not retain the path for
         # later access.
         yield path

@@ -16,14 +16,11 @@ from .. import test
 
 
 @unittest.skipUnless(test.TestBase.have_test_data(), "no test-data access")
-class TestAssemblers(test.TestBase):
+class TestAssemblers(test.TestRuntime):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         subprocess.run(["modprobe", "nbd"], check=False)
-
-    def setUp(self):
-        self.osbuild = test.OSBuild(self)
 
     @contextlib.contextmanager
     def run_assembler(self, name, options, output_path):

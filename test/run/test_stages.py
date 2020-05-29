@@ -86,7 +86,7 @@ class TestStages(test.TestBase):
                     raise_assertion(f"after values are different: {difference1_values[1]}, {difference2_values[1]}")
 
     def setUp(self):
-        self.osbuild = test.OSBuild(self)
+        self.osbuild = test.OSBuild()
 
     def run_stage_test(self, test_dir: str):
         with self.osbuild as osb:
